@@ -1,0 +1,11 @@
+repos:
+  - repo: local
+    hooks:
+      - id: security-audit
+        name: Multi-Agent Security Audit
+        entry: python security_audit.py
+        language: system
+        pass_filenames: false
+        always_run: false
+        stages: [commit]
+        types: [python]
