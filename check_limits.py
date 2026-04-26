@@ -14,7 +14,7 @@ def test_gemini():
         return False
     
     genai.configure(api_key=api_key)
-    model = genai.GenerativeModel('gemini-2.5-flash')
+    model = genai.GenerativeModel('gemini-2.5-flash-lite')
     
     try:
         response = model.generate_content("Say 'Gemini OK'")

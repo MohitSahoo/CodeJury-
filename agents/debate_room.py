@@ -56,6 +56,7 @@ def run_stage3(consensus_results: List[Dict[str, Any]]) -> Dict[str, Any]:
             # Adjust severity based on confidence
             original_severity = vuln['severity']
             confidence = vuln['confidence']
+            agent_count = vuln.get('agent_count', '0/3')  # Already formatted as "2/3"
 
             # High confidence vulns keep their severity
             # Medium confidence vulns get downgraded one level
@@ -70,16 +71,44 @@ def run_stage3(consensus_results: List[Dict[str, Any]]) -> Dict[str, Any]:
             else:
                 adjusted_severity = original_severity
 
+            # Build detailed reasoning
+            reasoning_parts = []
+            reasoning_parts.append(f"Agent consensus: {agent_count} agents detected this vulnerability")
+            reasoning_parts.append(f"Confidence level: {confidence}")
+
+            if confidence == 'HIGH':
+                reasoning_parts.append("All agents agree on severity - no adjustment needed")
+            elif confidence == 'MEDIUM':
+                reasoning_parts.append(f"Partial consensus - severity adjusted from {original_severity} to {adjusted_severity}")
+
+            # Add exploit context if available
+            exploit_difficulty = vuln.get('exploit_difficulty', '').strip()
+            blast_radius = vuln.get('blast_radius', '').strip()
+
+            if exploit_difficulty:
+                reasoning_parts.append(f"Exploit difficulty: {exploit_difficulty}")
+            if blast_radius:
+                reasoning_parts.append(f"Blast radius: {blast_radius}")
+
             debated_results.append({
                 'type': vuln['type'],
                 'location': vuln['location'],
                 'original_severity': original_severity,
                 'debated_severity': adjusted_severity,
                 'confidence': confidence,
+                'agent_consensus': f"{agent_count}/3 agents",
                 'description': vuln['description'],
                 'evidence': vuln['evidence'],
                 'cwe_id': vuln.get('cwe_id', ''),
-                'reasoning': f"Confidence {confidence} - severity {'maintained' if adjusted_severity == original_severity else 'adjusted'}"
+                'exploit_difficulty': exploit_difficulty,
+                'blast_radius': blast_radius,
+                'reasoning': ' | '.join(reasoning_parts),
+                'debate_summary': {
+                    'agents_detected': agent_count,
+                    'confidence_level': confidence,
+                    'severity_adjusted': adjusted_severity != original_severity,
+                    'adjustment_reason': 'Partial consensus requires severity downgrade' if adjusted_severity != original_severity else 'Full consensus maintains severity'
+                }
             })
 
     result = {

@@ -154,13 +154,6 @@ Git Diff (changed Python files)
 Exit 1 if critical vuln (blocks commit)
 ```
 
-## Pivot Summary
-
-**From:** YouTube tutorial → blog post converter
-**To:** Multi-agent security audit for Python code
-
-**Why:** YouTube-to-blog had weak product-market fit. Security audit has clear pain (false positives, missed vulns). Multi-agent consensus is overkill for content, perfect for security.
-
 ## License
 
 MIT

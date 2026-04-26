@@ -1,25 +1,25 @@
-# Agentic Newsroom — Instruction Ledger
+# Security Audit Pipeline — Configuration
 _Last updated: 2026-04-26_
 
-## Output Style
-- Tone: professional but conversational
-- Include "Key Takeaways" box at end
-- Max length: 1500 words
-- Use H2 for main sections, H3 for subsections only
-- Include "Prerequisites" section if needed
+## Pipeline Settings
+- Consensus threshold: 2/3 agents must agree
+- Critical vulnerabilities: require all 3 agents for high confidence
+- Pre-commit hook: blocks commits with CRITICAL or HIGH severity vulns
 
-## Consensus Settings
-- Default threshold: 2/3 agents must agree
-- Security/performance claims: require all 3 agents
+## API Configuration
+- Gemini: gemini-2.5-flash-lite (higher rate limits)
+- Groq: llama-3.1-8b-instant (higher rate limits)
+- Claude: Agent C uses heuristic analysis (no API key needed)
 
-## Free Tier Guards
-- Never re-upload video to Gemini (cache result)
-- Use llama-3.3-70b-versatile for Groq
-- Groq free tier has generous limits
+## Rate Limit Strategy
+- Gemini free tier: 1500 RPD
+- Groq free tier: generous limits
+- Graceful degradation: runs with 2-agent consensus if one API fails
 
-## Session Feedback Log
-(Auto-populated by ledger_updater.py)
+## Session Notes
+(Auto-populated during development)
 
 ---
 ### 2026-04-26 - Initial Setup
-Project initialized with 5-stage pipeline architecture.
+Project initialized with 5-stage security audit pipeline architecture.
+
