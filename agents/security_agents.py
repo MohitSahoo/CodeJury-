@@ -73,7 +73,7 @@ Return ONLY valid JSON, no markdown, no explanations."""
 
         try:
             response = self.gemini_client.models.generate_content(
-                model='gemini-2.5-flash',
+                model='gemini-2.5-flash-lite',
                 contents=prompt
             )
             result_text = response.text.strip()
@@ -137,7 +137,7 @@ Return ONLY valid JSON, no markdown."""
 
         try:
             response = self.groq.chat.completions.create(
-                model="llama-3.3-70b-versatile",
+                model="llama-3.1-8b-instant",
                 messages=[{"role": "user", "content": prompt}],
                 temperature=0.6,
                 max_tokens=2000
