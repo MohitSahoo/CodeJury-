@@ -29,3 +29,4 @@ DATABASE_PASSWORD = "admin123"
 # Insecure subprocess call
 def run_command(user_input):
     subprocess.call(f"echo {user_input}", shell=True)
+# Re-test

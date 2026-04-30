@@ -1,7 +1,6 @@
 # Custom config for testing
 exclude:
   - 'test_*.go'
-  - 'vulnerable_app.py'
   - 'migrations/**'
   - '__pycache__/**'
   - '.venv/**'
