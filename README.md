@@ -81,7 +81,7 @@ git commit -m "test"
 
 ## Architecture
 
-The pipeline uses a decoupled, 5-stage orchestration model designed for high performance and accurate consensus.
+Python-only security scanner. 5-stage pipeline with multi-agent consensus.
 
 ```mermaid
 graph TD
@@ -125,12 +125,11 @@ graph TD
 
 ## Features
 
-### ✅ Multi-Language Support
-- **Python**: Deep AST analysis (supports `async def`)
-- **JavaScript**: Function and SQL pattern extraction
-- **Java**: Method-level security analysis
-- **Go**: Package-level pattern recognition
-- *Designed for easy extension via `ParserFactory`*
+### ✅ Python Security Analysis
+- Deep AST analysis (supports `async def`)
+- SQL injection, command injection, path traversal detection
+- Secrets detection (API keys, tokens, passwords)
+- Function-level granular analysis
 
 ### ✅ Multi-Agent Consensus
 - 3 security agents with diverse models:
@@ -465,7 +464,6 @@ security-audit-pipeline/
 - [x] Configurable exit codes (fail-on-high, strict, warn-only)
 
 ### Next
-- [ ] JavaScript/TypeScript support
 - [ ] GitHub Action (alternative to pre-commit)
 - [ ] Cross-file attack trees
 - [ ] Auto-fix suggestions (generate patches)
@@ -487,7 +485,6 @@ security-audit-pipeline/
 ## Contributing
 
 Contributions welcome! Areas where help is needed:
-- Language support (JavaScript/TypeScript, Go, Rust)
 - Additional vulnerability patterns
 - False positive reduction
 - Performance optimization
@@ -519,7 +516,7 @@ python security_audit.py --json --fail-on-high
 A: Create `.secaudit.yaml` with exclude patterns. Test files, migrations, and common patterns are excluded by default.
 
 **Q: What about other languages?**
-A: MVP is Python only. Architecture designed for easy extension to JS/TS, Go, etc. Contributions welcome.
+A: Python only. Focused scope for better detection accuracy.
 
 **Q: How much does it cost?**
 A: Free tier APIs only. Gemini 2.0 Flash (15 RPM) + Groq Llama models (14,400 req/day each). ~0.6K tokens per commit. 1000+ commits/day on free tier.
