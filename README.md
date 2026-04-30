@@ -410,8 +410,7 @@ Learning security, want instant feedback. **Learn security by doing - see attack
 
 ## Documentation
 
-- **[USAGE.md](USAGE.md)** - Detailed usage and examples
-- **[STATUS.md](STATUS.md)** - Implementation status and roadmap
+- **[EXAMPLE.md](EXAMPLE.md)** - Usage examples and patterns
 
 ---
 
