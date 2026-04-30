@@ -93,8 +93,8 @@ security-audit-pipeline/
 ├── .gitignore                  # Git ignore rules
 ├── requirements.txt            # Python dependencies
 ├── README.md                   # Project overview
-├── QUICKSTART.md               # Quick start guide
-├── IMPLEMENTATION_COMPLETE.md  # Implementation summary
+├── USAGE.md                    # Detailed usage guide
+├── STATUS.md                   # Implementation status
 │
 ├── agents/                     # Stage agents
 │   ├── __init__.py
@@ -342,9 +342,7 @@ After first run:
 
 **Documentation:**
 - `README.md` - Project overview
-- `QUICKSTART.md` - Quick start guide
-- `USAGE_GUIDE.md` - Detailed usage
-- `IMPLEMENTATION_COMPLETE.md` - Implementation summary
+- `USAGE.md` - Detailed usage and examples
 - This file - Complete status
 
 ---

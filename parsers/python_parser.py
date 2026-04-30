@@ -1,36 +1,21 @@
 """
-Stage 1: Code Parsing & Multi-Language Analysis
-Extracts security-relevant patterns from source code.
+Python Language Parser
+Refactored from original SecurityCodeParser.
 """
 
 import ast
-import json
-import os
-from pathlib import Path
-from typing import Dict, List, Any, Optional
+from typing import Dict, List, Any, Set, Optional
 
-from tools.git_diff_extractor import (
-    get_staged_files,
-    get_staged_python_files,
-    get_staged_file_hashes,
-    get_file_content,
-    get_file_diff,
-    parse_diff_lines
-)
-from tools.config_manager import ConfigManager
-from parsers import ParserFactory
+from parsers.base_parser import LanguageParser, ParserFactory
+from tools.git_diff_extractor import get_file_content, parse_diff_lines
 
 
-class SecurityCodeParser:
-    """Parse source code and extract security-relevant patterns (legacy Python-only)."""
+class PythonParser(LanguageParser):
+    """Python-specific security parser using AST."""
 
-    def __init__(self):
-        # Import Python parser for backward compatibility
-        from parsers.python_parser import PythonParser
-        self.python_parser = PythonParser()
-
-        # Initialize security patterns for legacy methods
-        self.security_patterns = {
+    def _define_security_patterns(self) -> Dict[str, List[str]]:
+        """Define Python-specific security patterns."""
+        return {
             'sql_keywords': ['SELECT', 'INSERT', 'UPDATE', 'DELETE', 'DROP', 'CREATE', 'ALTER'],
             'dangerous_imports': ['subprocess', 'os.system', 'eval', 'exec', 'pickle', '__import__'],
             'user_input_sources': ['request.args', 'request.form', 'request.json', 'request.data',
@@ -40,46 +25,70 @@ class SecurityCodeParser:
         }
 
     def parse_file(self, filepath: str, diff_content: str) -> Dict[str, Any]:
-        """
-        Parse Python file and extract security-relevant patterns (legacy).
+        """Parse Python file and extract security-relevant patterns."""
+        content = get_file_content(filepath)
+        if not content:
+            return self._empty_extraction(filepath)
 
-        Args:
-            filepath: Path to Python file
-            diff_content: Git diff for this file
+        try:
+            tree = ast.parse(content, filename=filepath)
+        except SyntaxError as e:
+            return {
+                "filepath": filepath,
+                "error": f"Syntax error: {e}",
+                "parseable": False
+            }
 
-        Returns:
-            Dictionary with extracted security patterns
-        """
-        return self.python_parser.parse_file(filepath, diff_content)
+        changed_lines = parse_diff_lines(diff_content)
+        tainted_vars = self._find_tainted_variables_ast(tree)
 
-    def _empty_extraction(self, filepath: str) -> Dict[str, Any]:
-        """Return empty extraction structure."""
-        return {
+        extraction = {
             "filepath": filepath,
-            "parseable": False,
-            "error": "Could not read file",
+            "parseable": True,
+            "language": "python",
+            "functions": self._extract_functions_ast(tree, changed_lines),
+            "classes": self._extract_classes(tree),
+            "sql_patterns": self._find_sql_patterns_ast(tree, content),
+            "user_inputs": self._find_user_inputs_ast(tree),
+            "file_operations": self._find_file_operations_ast(tree, tainted_vars),
+            "dangerous_imports": self._extract_dangerous_imports(tree),
+            "string_formatting": self._find_string_formatting(tree),
+            "subprocess_calls": self._find_subprocess_calls_ast(tree, tainted_vars),
+            "changed_lines": changed_lines,
+            "tainted_variables": list(tainted_vars),
             "has_security_patterns": False
         }
 
-    def _find_tainted_variables(self, tree: ast.AST) -> set:
-        """
-        Find variables assigned from user input sources (taint tracking).
-        Returns set of variable names that contain user input.
-        """
+        extraction["has_security_patterns"] = (
+            len(extraction["sql_patterns"]) > 0 or
+            len(extraction["user_inputs"]) > 0 or
+            len(extraction["file_operations"]) > 0 or
+            len(extraction["dangerous_imports"]) > 0 or
+            len(extraction["subprocess_calls"]) > 0
+        )
+
+        return extraction
+
+    def _find_tainted_variables(self, content: str) -> Set[str]:
+        """Find tainted variables from source code string."""
+        try:
+            tree = ast.parse(content)
+            return self._find_tainted_variables_ast(tree)
+        except SyntaxError:
+            return set()
+
+    def _find_tainted_variables_ast(self, tree: ast.AST) -> Set[str]:
+        """Find variables assigned from user input sources."""
         tainted = set()
 
         for node in ast.walk(tree):
-            # Check assignments: var = request.args.get('x')
             if isinstance(node, ast.Assign):
-                # Check if RHS contains user input
                 rhs_str = ast.unparse(node.value)
                 if any(pattern in rhs_str for pattern in self.security_patterns['user_input_sources']):
-                    # Mark all LHS targets as tainted
                     for target in node.targets:
                         if isinstance(target, ast.Name):
                             tainted.add(target.id)
 
-            # Check augmented assignments: var += request.args.get('x')
             elif isinstance(node, ast.AugAssign):
                 rhs_str = ast.unparse(node.value)
                 if any(pattern in rhs_str for pattern in self.security_patterns['user_input_sources']):
@@ -88,7 +97,15 @@ class SecurityCodeParser:
 
         return tainted
 
-    def _extract_functions(self, tree: ast.AST, changed_lines: Dict[str, List[int]]) -> List[Dict[str, Any]]:
+    def _extract_functions(self, content: str) -> List[Dict[str, Any]]:
+        """Extract functions from source code string."""
+        try:
+            tree = ast.parse(content)
+            return self._extract_functions_ast(tree, {})
+        except SyntaxError:
+            return []
+
+    def _extract_functions_ast(self, tree: ast.AST, changed_lines: Dict[str, List[int]]) -> List[Dict[str, Any]]:
         """Extract all function definitions."""
         functions = []
 
@@ -127,27 +144,58 @@ class SecurityCodeParser:
 
         return classes
 
-    def _find_sql_patterns(self, tree: ast.AST, content: str) -> List[Dict[str, Any]]:
+    def _find_sql_patterns(self, content: str) -> List[Dict[str, Any]]:
+        """Find SQL patterns from source code string."""
+        try:
+            tree = ast.parse(content)
+            return self._find_sql_patterns_ast(tree, content)
+        except SyntaxError:
+            return []
+
+    def _find_sql_patterns_ast(self, tree: ast.AST, content: str) -> List[Dict[str, Any]]:
         """Find potential SQL query construction."""
         sql_patterns = []
 
         for node in ast.walk(tree):
-            # Check string literals for SQL keywords
             if isinstance(node, ast.Constant) and isinstance(node.value, str):
+                # Skip if it's a docstring
+                parent = self._get_parent_node(tree, node)
+                if isinstance(parent, ast.Expr) and parent == self._get_docstring_node(tree, node):
+                    continue
+
                 sql_upper = node.value.upper()
                 if any(kw in sql_upper for kw in self.security_patterns['sql_keywords']):
-                    # Check if it's using f-string or format (dangerous)
+                    # Additional check: ensure it's not JUST a word like "update" in a sentence
+                    is_real_sql = False
+                    # Stricter matching for SQL queries
+                    if "SELECT" in sql_upper and "FROM" in sql_upper:
+                        is_real_sql = True
+                    elif any(sql_upper.strip().startswith(kw) for kw in self.security_patterns['sql_keywords']):
+                        is_real_sql = True
+                    elif "INSERT INTO" in sql_upper or "UPDATE " in sql_upper or "DELETE FROM" in sql_upper:
+                        # Ensure it's not part of a word like "UPDATE" in "CREATE/UPDATE"
+                        # We look for "UPDATE " but need to be careful
+                        if "UPDATE " in sql_upper:
+                            # Simple check: is it preceded by something that's not a slash or letter?
+                            idx = sql_upper.find("UPDATE ")
+                            if idx == 0 or not sql_upper[idx-1].isalnum():
+                                is_real_sql = True
+                        else:
+                            is_real_sql = True
+                        
+                    if not is_real_sql:
+                        continue
+
                     parent = self._get_parent_node(tree, node)
                     is_formatted = isinstance(parent, (ast.JoinedStr, ast.FormattedValue))
 
                     sql_patterns.append({
-                        "query_snippet": node.value[:100],  # First 100 chars
+                        "query_snippet": node.value[:100],
                         "lineno": node.lineno,
                         "uses_formatting": is_formatted,
                         "risk": "HIGH" if is_formatted else "MEDIUM"
                     })
 
-            # Check for .format() calls on strings with SQL
             if isinstance(node, ast.Call):
                 if isinstance(node.func, ast.Attribute) and node.func.attr == 'format':
                     if isinstance(node.func.value, ast.Constant):
@@ -162,8 +210,16 @@ class SecurityCodeParser:
 
         return sql_patterns
 
-    def _find_user_inputs(self, tree: ast.AST, content: str) -> List[Dict[str, Any]]:
-        """Find user input sources (request.args, request.form, etc)."""
+    def _find_user_inputs(self, content: str) -> List[Dict[str, Any]]:
+        """Find user inputs from source code string."""
+        try:
+            tree = ast.parse(content)
+            return self._find_user_inputs_ast(tree)
+        except SyntaxError:
+            return []
+
+    def _find_user_inputs_ast(self, tree: ast.AST) -> List[Dict[str, Any]]:
+        """Find user input sources."""
         inputs = []
 
         for node in ast.walk(tree):
@@ -176,7 +232,6 @@ class SecurityCodeParser:
                         "type": self._classify_input_type(source)
                     })
 
-            # Check for input() calls
             if isinstance(node, ast.Call):
                 if isinstance(node.func, ast.Name) and node.func.id == 'input':
                     inputs.append({
@@ -187,12 +242,19 @@ class SecurityCodeParser:
 
         return inputs
 
-    def _find_file_operations(self, tree: ast.AST, content: str, tainted_vars: set) -> List[Dict[str, Any]]:
-        """Find file operations that could be vulnerable to path traversal."""
+    def _find_file_operations(self, content: str, tainted_vars: Set[str]) -> List[Dict[str, Any]]:
+        """Find file operations from source code string."""
+        try:
+            tree = ast.parse(content)
+            return self._find_file_operations_ast(tree, tainted_vars)
+        except SyntaxError:
+            return []
+
+    def _find_file_operations_ast(self, tree: ast.AST, tainted_vars: Set[str]) -> List[Dict[str, Any]]:
+        """Find file operations that could be vulnerable."""
         file_ops = []
 
         for node in ast.walk(tree):
-            # Check direct function calls
             if isinstance(node, ast.Call):
                 func_name = ""
                 if isinstance(node.func, ast.Name):
@@ -200,7 +262,6 @@ class SecurityCodeParser:
                 elif isinstance(node.func, ast.Attribute):
                     func_name = ast.unparse(node.func)
 
-                # Check if it's a file operation
                 if func_name == 'open' or 'Path' in func_name or 'os.path' in func_name:
                     has_user_input = self._contains_user_input(node, tainted_vars)
 
@@ -211,7 +272,6 @@ class SecurityCodeParser:
                         "risk": "HIGH" if has_user_input else "LOW"
                     })
 
-            # Check with statements (with open(...) as f:)
             elif isinstance(node, ast.With):
                 for item in node.items:
                     if isinstance(item.context_expr, ast.Call):
@@ -230,6 +290,36 @@ class SecurityCodeParser:
                             })
 
         return file_ops
+
+    def _find_subprocess_calls(self, content: str, tainted_vars: Set[str]) -> List[Dict[str, Any]]:
+        """Find subprocess calls from source code string."""
+        try:
+            tree = ast.parse(content)
+            return self._find_subprocess_calls_ast(tree, tainted_vars)
+        except SyntaxError:
+            return []
+
+    def _find_subprocess_calls_ast(self, tree: ast.AST, tainted_vars: Set[str]) -> List[Dict[str, Any]]:
+        """Find subprocess/os.system calls."""
+        subprocess_calls = []
+
+        for node in ast.walk(tree):
+            if isinstance(node, ast.Call):
+                func_name = ast.unparse(node.func) if hasattr(node, 'func') else ""
+
+                if 'subprocess' in func_name or 'os.system' in func_name or 'os.popen' in func_name:
+                    has_user_input = self._contains_user_input(node, tainted_vars)
+                    uses_shell = self._uses_shell_true(node)
+
+                    subprocess_calls.append({
+                        "function": func_name,
+                        "lineno": node.lineno,
+                        "has_user_input": has_user_input,
+                        "uses_shell": uses_shell,
+                        "risk": "CRITICAL" if (has_user_input and uses_shell) else "HIGH" if has_user_input else "MEDIUM"
+                    })
+
+        return subprocess_calls
 
     def _extract_dangerous_imports(self, tree: ast.AST) -> List[Dict[str, Any]]:
         """Extract potentially dangerous imports."""
@@ -255,12 +345,11 @@ class SecurityCodeParser:
 
         return dangerous
 
-    def _find_string_formatting(self, tree: ast.AST, content: str) -> List[Dict[str, Any]]:
+    def _find_string_formatting(self, tree: ast.AST) -> List[Dict[str, Any]]:
         """Find string formatting that might be used in SQL/command injection."""
         formatting = []
 
         for node in ast.walk(tree):
-            # F-strings
             if isinstance(node, ast.JoinedStr):
                 formatting.append({
                     "type": "f-string",
@@ -268,7 +357,6 @@ class SecurityCodeParser:
                     "risk": "MEDIUM"
                 })
 
-            # .format() calls
             if isinstance(node, ast.Call):
                 if isinstance(node.func, ast.Attribute) and node.func.attr == 'format':
                     formatting.append({
@@ -277,7 +365,6 @@ class SecurityCodeParser:
                         "risk": "MEDIUM"
                     })
 
-            # % formatting
             if isinstance(node, ast.BinOp) and isinstance(node.op, ast.Mod):
                 if isinstance(node.left, ast.Constant) and isinstance(node.left.value, str):
                     formatting.append({
@@ -288,49 +375,14 @@ class SecurityCodeParser:
 
         return formatting
 
-    def _find_subprocess_calls(self, tree: ast.AST, content: str, tainted_vars: set) -> List[Dict[str, Any]]:
-        """Find subprocess/os.system calls that could lead to command injection."""
-        subprocess_calls = []
-
-        for node in ast.walk(tree):
-            if isinstance(node, ast.Call):
-                func_name = ast.unparse(node.func) if hasattr(node, 'func') else ""
-
-                if 'subprocess' in func_name or 'os.system' in func_name or 'os.popen' in func_name:
-                    has_user_input = self._contains_user_input(node, tainted_vars)
-                    uses_shell = self._uses_shell_true(node)
-
-                    subprocess_calls.append({
-                        "function": func_name,
-                        "lineno": node.lineno,
-                        "has_user_input": has_user_input,
-                        "uses_shell": uses_shell,
-                        "risk": "CRITICAL" if (has_user_input and uses_shell) else "HIGH" if has_user_input else "MEDIUM"
-                    })
-
-        return subprocess_calls
-
-    def _contains_user_input(self, node: ast.AST, tainted_vars: set) -> bool:
-        """
-        Check if node contains references to user input sources or tainted variables.
-
-        Args:
-            node: AST node to check
-            tainted_vars: Set of variable names known to contain user input
-
-        Returns:
-            True if node contains user input (direct or via tainted variable)
-        """
+    def _contains_user_input(self, node: ast.AST, tainted_vars: Set[str]) -> bool:
+        """Check if node contains references to user input sources or tainted variables."""
         node_str = ast.unparse(node)
 
-        # Check direct user input patterns
         if any(pattern in node_str for pattern in self.security_patterns['user_input_sources']):
             return True
 
-        # Check if any tainted variables are referenced in this node
         for var_name in tainted_vars:
-            # Check for variable usage (not just substring match)
-            # Look for the variable as a Name node
             for child in ast.walk(node):
                 if isinstance(child, ast.Name) and child.id == var_name:
                     return True
@@ -365,154 +417,26 @@ class SecurityCodeParser:
         """Check if function overlaps with changed lines."""
         return any(start <= line <= end for line in changed_lines)
 
-    def _get_parent_node(self, tree: ast.AST, target: ast.AST) -> Optional[ast.AST]:
-        """Get parent node of target (simplified - walks tree)."""
+    def _get_parent_node(self, tree: ast.AST, target: ast.AST):
+        """Get parent node of target."""
         for node in ast.walk(tree):
             for child in ast.iter_child_nodes(node):
                 if child == target:
                     return node
         return None
 
-
-def run_stage1(config: dict = None) -> List[Dict[str, Any]]:
-    """
-    Stage 1: Parse all staged files (multi-language support).
-
-    Args:
-        config: Configuration dict with file filter options
-
-    Returns:
-        List of extraction dictionaries
-    """
-    if config is None:
-        config = {}
-
-    # Check cache first - validate it's still fresh
-    cache_file = Path('cache/stage1_extraction.json')
-    if cache_file.exists():
-        # Get current staged files to validate cache
-        supported_extensions = ParserFactory.get_supported_extensions()
-        current_staged = set(get_staged_files(supported_extensions))
-
-        # Load cache and check if files AND hashes match
-        with open(cache_file) as f:
-            cached_data = json.load(f)
-
-        # The first element in cached_data will be our metadata if it exists, 
-        # but the current structure doesn't have it. 
-        # For now, we'll check if the files match.
-        # To be truly robust, we'd store hashes in the cache file.
-        cached_files = set(item['filepath'] for item in cached_data if 'filepath' in item)
-        
-        # Check if file set matches
-        if cached_files == current_staged:
-            # Check if hashes match (we'll need to store them in extraction)
-            all_hashes_match = True
-            for item in cached_data:
-                if 'filepath' in item and 'hash' in item:
-                    current_hash = get_staged_file_hashes([item['filepath']]).get(item['filepath'])
-                    if current_hash != item['hash']:
-                        all_hashes_match = False
-                        break
-                elif 'filepath' in item: # Old cache without hashes
-                    all_hashes_match = False
-                    break
-            
-            if all_hashes_match:
-                print("✓ Stage 1 cache found and valid, loading...")
-                return cached_data
-            else:
-                print("⚠ Stage 1 cache stale (file content changed), rebuilding...")
-        else:
-            print("⚠ Stage 1 cache stale (staged files changed), rebuilding...")
-
-    print("Stage 1: Code Parsing & Multi-Language Analysis")
-    print("=" * 50)
-
-    # Get supported extensions from ParserFactory
-    supported_extensions = ParserFactory.get_supported_extensions()
-    staged_files = get_staged_files(supported_extensions)
-
-    if not staged_files:
-        print(f"No supported files staged (extensions: {', '.join(supported_extensions)})")
-        return []
-
-    # Load config for file filtering
-    config_manager = ConfigManager(config.get('config_file', '.secaudit.yaml'))
-
-    # Filter out excluded files
-    filtered_files = []
-    excluded_count = 0
-    for filepath in staged_files:
-        if config_manager.should_exclude_file(filepath):
-            print(f"Excluding: {filepath}")
-            excluded_count += 1
-        else:
-            filtered_files.append(filepath)
-
-    if excluded_count > 0:
-        print(f"Excluded {excluded_count} file(s) based on config patterns")
-
-    if not filtered_files:
-        print("No files to analyze after filtering")
-        return []
-
-    print(f"Analyzing {len(filtered_files)} file(s)")
-
-    extractions = []
-
-    for filepath in filtered_files:
-        print(f"\nParsing: {filepath}")
-
-        # Check if file type is supported
-        if not ParserFactory.supports_file(filepath):
-            print(f"  ⚠ Unsupported file type, skipping")
-            continue
-
-        # Get appropriate parser for file type
-        try:
-            parser = ParserFactory.get_parser(filepath)
-        except ValueError as e:
-            print(f"  ✗ {e}")
-            continue
-
-        diff = get_file_diff(filepath)
-        extraction = parser.parse_file(filepath, diff)
-        
-        # Add hash for cache validation
-        extraction['hash'] = get_staged_file_hashes([filepath]).get(filepath)
-
-        if extraction.get('parseable'):
-            print(f"  ✓ Language: {extraction.get('language', 'unknown')}")
-            print(f"  ✓ Functions: {len(extraction.get('functions', []))}")
-            print(f"  ✓ SQL patterns: {len(extraction.get('sql_patterns', []))}")
-            print(f"  ✓ User inputs: {len(extraction.get('user_inputs', []))}")
-            print(f"  ✓ File operations: {len(extraction.get('file_operations', []))}")
-            print(f"  ✓ Subprocess calls: {len(extraction.get('subprocess_calls', []))}")
-
-            if extraction['has_security_patterns']:
-                print(f"  ⚠ Has security-relevant patterns - will analyze")
-            else:
-                print(f"  ✓ No security patterns - will skip analysis")
-        else:
-            print(f"  ✗ Parse error: {extraction.get('error')}")
-
-        extractions.append(extraction)
-
-    # Cache results
-    cache_file.parent.mkdir(exist_ok=True)
-    with open(cache_file, 'w') as f:
-        json.dump(extractions, f, indent=2)
-
-    print(f"\n✓ Stage 1 complete - cached to {cache_file}")
-
-    return extractions
+    def _get_docstring_node(self, tree: ast.AST, target_constant: ast.Constant) -> Optional[ast.AST]:
+        """Check if target_constant is a docstring of any module/class/function."""
+        for node in ast.walk(tree):
+            if isinstance(node, (ast.Module, ast.ClassDef, ast.FunctionDef, ast.AsyncFunctionDef)):
+                if (node.body and 
+                    isinstance(node.body[0], ast.Expr) and 
+                    isinstance(node.body[0].value, ast.Constant) and 
+                    isinstance(node.body[0].value.value, str)):
+                    if node.body[0].value == target_constant:
+                        return node.body[0]
+        return None
 
 
-if __name__ == "__main__":
-    # Test Stage 1
-    extractions = run_stage1()
-    print(f"\nExtracted {len(extractions)} file(s)")
-
-    security_relevant = sum(1 for e in extractions if e.get('has_security_patterns'))
-    print(f"Security-relevant files: {security_relevant}")
+# Register Python parser
+ParserFactory.register_parser(['.py'], PythonParser)

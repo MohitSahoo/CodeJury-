@@ -1,0 +1,21 @@
+# Security Audit Ignore File
+# Mark false positives to filter them out automatically
+#
+# Format: filepath:line:VULN_TYPE  # optional comment
+#
+# Examples:
+#   auth.py:47:SQL_INJECTION  # test code, safe
+#   views.py:23:XSS  # input is sanitized elsewhere
+#   utils.py:*:COMMAND_INJECTION  # ignore all occurrences in this file
+#
+# Supported wildcards:
+#   - Use * for line number to ignore all occurrences in a file
+#   - Use just filename (not full path) for portability
+#
+# Vulnerability types:
+#   SQL_INJECTION, XSS, COMMAND_INJECTION, PATH_TRAVERSAL,
+#   INSECURE_DESERIALIZATION, WEAK_CRYPTO, HARDCODED_SECRET,
+#   SSRF, XXE, LDAP_INJECTION, etc.
+#
+# Add your ignore rules below:
+

@@ -1,10 +1,11 @@
 #!/bin/bash
-# Setup script for Agentic Newsroom
+# Setup script for Security Audit Pipeline
+# Multi-agent AI security analysis for your commits.
 
 set -e
 
-echo "🚀 Agentic Newsroom Setup"
-echo "========================="
+echo "🚀 Security Audit Pipeline Setup"
+echo "================================"
 echo ""
 
 # Check Python version
@@ -19,35 +20,41 @@ pip install -q -r requirements.txt
 echo "✓ Dependencies installed"
 echo ""
 
-# Check yt-dlp
-echo "Checking yt-dlp..."
-yt-dlp --version > /dev/null || { echo "❌ yt-dlp not found"; exit 1; }
-echo "✓ yt-dlp ready"
-echo ""
-
 # Setup .env
 if [ ! -f .env ]; then
     echo "Creating .env file..."
     cp .env.example .env
     echo "⚠️  Please edit .env and add your API keys:"
-    echo "   - GEMINI_API_KEY"
-    echo "   - GROQ_API_KEY"
+    echo "   - GEMINI_API_KEY (Required for Agent A)"
+    echo "   - GROQ_API_KEY (Required for Agent B)"
     echo ""
 else
     echo "✓ .env file exists"
     echo ""
 fi
 
+# Install pre-commit hook
+echo "Checking for git repository..."
+if [ -d .git ]; then
+    echo "Installing pre-commit hooks..."
+    pre-commit install
+    echo "✓ Pre-commit hooks installed"
+else
+    echo "⚠️  Not a git repository. Skipping pre-commit installation."
+    echo "   Run 'git init' and 'pre-commit install' manually later."
+fi
+echo ""
+
 # Check API keys
 if [ -f .env ]; then
-    source .env
-    if [ -z "$GEMINI_API_KEY" ] || [ "$GEMINI_API_KEY" = "your_gemini_api_key_here" ]; then
+    # Use grep to check for keys instead of sourcing (safer for script)
+    if grep -q "GEMINI_API_KEY=your_" .env || ! grep -q "GEMINI_API_KEY=" .env; then
         echo "⚠️  GEMINI_API_KEY not configured in .env"
     else
         echo "✓ GEMINI_API_KEY configured"
     fi
 
-    if [ -z "$GROQ_API_KEY" ] || [ "$GROQ_API_KEY" = "your_groq_api_key_here" ]; then
+    if grep -q "GROQ_API_KEY=your_" .env || ! grep -q "GROQ_API_KEY=" .env; then
         echo "⚠️  GROQ_API_KEY not configured in .env"
     else
         echo "✓ GROQ_API_KEY configured"
@@ -55,11 +62,13 @@ if [ -f .env ]; then
 fi
 
 echo ""
-echo "========================="
+echo "================================"
 echo "✅ Setup complete!"
 echo ""
 echo "Next steps:"
-echo "1. Edit .env with your API keys (if not done)"
-echo "2. Run: python orchestrator.py --url 'https://youtube.com/watch?v=...'"
+| 1. Ensure your API keys are in .env
+| 2. Stage some files: git add path/to/file.py
+| 3. Run audit: python3 security_audit.py
+| 
+| See USAGE.md for detailed instructions.
 echo ""
-echo "See QUICKSTART.md for detailed usage instructions."

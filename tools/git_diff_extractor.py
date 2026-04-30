@@ -1,20 +1,26 @@
 """
 Git diff extraction for security audit pipeline.
-Extracts staged Python files and their diffs for analysis.
+Extracts staged files and their diffs for analysis.
 """
 
 import subprocess
-from pathlib import Path
 from typing import List, Dict, Optional
 
 
-def get_staged_python_files() -> List[str]:
+def get_staged_files(extensions: List[str] = None) -> List[str]:
     """
-    Get list of staged .py files.
+    Get list of staged files with specified extensions.
+
+    Args:
+        extensions: List of file extensions (e.g., ['.py', '.js', '.java'])
+                   If None, defaults to ['.py']
 
     Returns:
-        List of file paths for staged Python files
+        List of file paths for staged files
     """
+    if extensions is None:
+        extensions = ['.py']
+
     try:
         result = subprocess.run(
             ['git', 'diff', '--cached', '--name-only', '--diff-filter=ACM'],
@@ -26,7 +32,7 @@ def get_staged_python_files() -> List[str]:
         files = [
             f.strip()
             for f in result.stdout.split('\n')
-            if f.strip().endswith('.py')
+            if f.strip() and any(f.strip().endswith(ext) for ext in extensions)
         ]
 
         return files
@@ -34,6 +40,41 @@ def get_staged_python_files() -> List[str]:
     except subprocess.CalledProcessError as e:
         print(f"Error getting staged files: {e}")
         return []
+
+
+def get_staged_file_hashes(files: List[str]) -> Dict[str, str]:
+    """
+    Get git blob hashes for a list of staged files.
+
+    Args:
+        files: List of file paths
+
+    Returns:
+        Dict mapping filepath to its blob hash
+    """
+    hashes = {}
+    for filepath in files:
+        try:
+            result = subprocess.run(
+                ['git', 'rev-parse', f':{filepath}'],
+                capture_output=True,
+                text=True,
+                check=True
+            )
+            hashes[filepath] = result.stdout.strip()
+        except subprocess.CalledProcessError:
+            hashes[filepath] = "unknown"
+    return hashes
+
+
+def get_staged_python_files() -> List[str]:
+    """
+    Get list of staged .py files (backward compatibility).
+
+    Returns:
+        List of file paths for staged Python files
+    """
+    return get_staged_files(['.py'])
 
 
 def get_file_diff(filepath: str) -> str:
@@ -89,7 +130,6 @@ def parse_diff_lines(diff_content: str) -> Dict[str, List[int]]:
         Dict with 'added' and 'modified' line number lists
     """
     added_lines = []
-    modified_lines = []
     current_line = 0
 
     for line in diff_content.split('\n'):

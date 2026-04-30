@@ -50,13 +50,27 @@ def score_security_consensus(
     # Combine all vulnerabilities
     all_vulns = agent_a_vulns + agent_b_vulns + agent_c_vulns
 
-    # Group by location + type
+    # Group by location + normalized type
     grouped = defaultdict(list)
     for vuln in all_vulns:
-        # Create key from location and type
+        # Create key from location and normalized type
         location = vuln.get('location', 'unknown')
-        vuln_type = vuln.get('type', 'UNKNOWN')
-        key = f"{location}:{vuln_type}"
+        vuln_type = vuln.get('type', 'UNKNOWN').upper()
+        
+        # Normalize common types
+        normalized_type = vuln_type
+        if any(t in vuln_type for t in ['SQL_INJECTION', 'SQLI']):
+            normalized_type = 'SQL_INJECTION'
+        elif any(t in vuln_type for t in ['COMMAND_INJECTION', 'CMD_INJECTION', 'OS_COMMAND']):
+            normalized_type = 'COMMAND_INJECTION'
+        elif any(t in vuln_type for t in ['XSS', 'CROSS_SITE_SCRIPTING']):
+            normalized_type = 'XSS'
+        elif any(t in vuln_type for t in ['DESERIALIZATION', 'PICKLE']):
+            normalized_type = 'INSECURE_DESERIALIZATION'
+        elif any(t in vuln_type for t in ['PATH_TRAVERSAL', 'LFI', 'DIRECTORY_TRAVERSAL']):
+            normalized_type = 'PATH_TRAVERSAL'
+            
+        key = f"{location}:{normalized_type}"
         grouped[key].append(vuln)
 
     # Score consensus (2/3 threshold)
@@ -83,8 +97,8 @@ def score_security_consensus(
                 'type': primary.get('type'),
                 'location': primary.get('location'),
                 'severity': max_severity,
-                'confidence': 'HIGH' if agent_count == 3 else 'MEDIUM',
-                'agent_count': f"{agent_count}/3",
+                'confidence': 'HIGH' if agent_count == active_agents else 'MEDIUM',
+                'agent_count': f"{agent_count}/{active_agents}",
                 'sources': list(sources),
                 'description': descriptions[0],  # Use first agent's description
                 'all_descriptions': descriptions,

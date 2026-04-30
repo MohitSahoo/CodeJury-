@@ -4,6 +4,9 @@
 # Cache directory (videos, transcripts, intermediate outputs)
 cache/
 
+# Security audit baseline (optional - commit for team-wide baseline)
+.secaudit-baseline.json
+
 # Python
 __pycache__/
 *.py[cod]

@@ -22,16 +22,22 @@ class SecurityAgents:
 
     def __init__(self):
         """Initialize API clients."""
-        # Gemini setup
+        # Gemini setup (optional - will skip Agent A if unavailable)
         gemini_key = os.getenv('GEMINI_API_KEY')
-        if not gemini_key:
-            raise ValueError("GEMINI_API_KEY not found in .env")
-        self.gemini_client = genai.Client(api_key=gemini_key)
+        if gemini_key:
+            try:
+                self.gemini_client = genai.Client(api_key=gemini_key)
+            except Exception as e:
+                print(f"Warning: Failed to initialize Gemini client: {e}")
+                self.gemini_client = None
+        else:
+            print("Warning: GEMINI_API_KEY not found - Agent A will be skipped")
+            self.gemini_client = None
 
-        # Groq setup
+        # Groq setup (required - at least one agent must work)
         groq_key = os.getenv('GROQ_API_KEY')
         if not groq_key:
-            raise ValueError("GROQ_API_KEY not found in .env")
+            raise ValueError("GROQ_API_KEY not found in .env - at least one API key is required")
         self.groq = Groq(api_key=groq_key)
 
     def agent_a_static_analysis(self, extraction: Dict[str, Any]) -> Dict[str, Any]:
@@ -336,14 +342,16 @@ def run_stage2(extractions: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
     with open(cache_file, 'w') as f:
         json.dump(all_results, f, indent=2)
 
-    # Also save individual agent results for debugging
+    # Save summary debug info
     cache_dir = Path('cache')
-    with open(cache_dir / 'stage2_agent_a.json', 'w') as f:
-        json.dump(agent_a_result, f, indent=2)
-    with open(cache_dir / 'stage2_agent_b.json', 'w') as f:
-        json.dump(agent_b_result, f, indent=2)
-    with open(cache_dir / 'stage2_agent_c.json', 'w') as f:
-        json.dump(agent_c_result, f, indent=2)
+    if all_results:
+        # In a multi-file scenario, this just saves the LAST file's agent results for quick debugging
+        with open(cache_dir / 'stage2_agent_a.json', 'w') as f:
+            json.dump(agent_a_result, f, indent=2)
+        with open(cache_dir / 'stage2_agent_b.json', 'w') as f:
+            json.dump(agent_b_result, f, indent=2)
+        with open(cache_dir / 'stage2_agent_c.json', 'w') as f:
+            json.dump(agent_c_result, f, indent=2)
 
     print(f"\n✓ Stage 2 complete - cached to {cache_file}")
 

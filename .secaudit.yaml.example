@@ -1,0 +1,55 @@
+# Security Audit Configuration
+# Configure file filters, exclusions, and scanning behavior
+
+# Exclude patterns (glob syntax)
+# Files matching these patterns will be skipped during analysis
+exclude:
+  # Test files
+  - 'test_*.py'
+  - '*_test.py'
+  - 'tests/**'
+  - 'test/**'
+
+  # Migrations and generated code
+  - 'migrations/**'
+  - '**/migrations/**'
+  - '__generated__/**'
+  - '**/generated/**'
+
+  # Virtual environments
+  - '.venv/**'
+  - 'venv/**'
+  - 'env/**'
+  - '.env/**'
+
+  # Build artifacts
+  - '__pycache__/**'
+  - '**/__pycache__/**'
+  - '.tox/**'
+  - 'build/**'
+  - 'dist/**'
+  - '*.egg-info/**'
+  - '.pytest_cache/**'
+
+  # Documentation
+  - 'docs/**'
+  - 'doc/**'
+
+# Include patterns (optional)
+# If specified, ONLY files matching these patterns will be scanned
+# Useful for limiting scope to specific directories
+# include:
+#   - 'src/**'
+#   - 'app/**'
+#   - 'lib/**'
+
+# Minimum confidence level to report
+# Options: LOW, MEDIUM, HIGH
+# Lower values show more potential issues (more false positives)
+# Higher values show only high-confidence issues (may miss some vulnerabilities)
+min_confidence: LOW
+
+# Maximum line length before skipping
+# Very long lines are often generated code or minified content
+# Default: 500 characters
+max_line_length: 500

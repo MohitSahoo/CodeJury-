@@ -1,0 +1,14 @@
+# Custom config for testing
+exclude:
+  - 'test_*.py'
+  - 'test_*.js'
+  - 'test_*.java'
+  - 'test_*.go'
+  - 'vulnerable_app.py'
+  - 'migrations/**'
+  - '__pycache__/**'
+  - '.venv/**'
+  - 'venv/**'
+  - 'env/**'
+  - 'cache/**'
+  - 'scratch/**'
