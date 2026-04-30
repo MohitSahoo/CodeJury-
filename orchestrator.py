@@ -3,7 +3,7 @@ Main Orchestrator
 Runs all 5 stages of the security audit pipeline.
 """
 
-import sys
+import os
 from typing import Optional, Dict
 
 from rich.console import Console
@@ -56,6 +56,7 @@ def run_security_audit(config: Optional[Dict] = None) -> int:
             'ignore_file': '.secaudit-ignore',
         }
     try:
+        os.makedirs('cache', exist_ok=True)
         if not config.get('json_output'):
             console.print("\n[bold cyan]Security Audit Pipeline[/bold cyan]")
             console.print("[dim]Multi-agent security analysis for Python code[/dim]\n")

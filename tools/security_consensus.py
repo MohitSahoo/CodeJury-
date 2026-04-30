@@ -36,8 +36,8 @@ def score_security_consensus(
 ) -> Dict[str, Any]:
     """
     Score consensus across security agents with graceful degradation.
-    - 3 agents: need 2/3 consensus (66%)
-    - 2 agents: need 2/2 consensus (100%)
+    - 3 agents: need 1/3 consensus (33%) - any agent finding = report
+    - 2 agents: need 1/2 consensus (50%) - any agent finding = report
     - 1 agent: insufficient for consensus
     """
     # Extract vulnerabilities
@@ -56,11 +56,11 @@ def score_security_consensus(
 
     active_agents_count = 3 - len(failed_agents)
 
-    # Consensus threshold: always need 2 agents to agree
-    # 3 agents: 2/3 = 66%
-    # 2 agents: 2/2 = 100%
-    # 1 agent: insufficient
-    consensus_threshold = 2
+    # Consensus threshold: any agent finding = report
+    # 3 agents: 1/3 = 33% (any single agent)
+    # 2 agents: 1/2 = 50% (any single agent)
+    # 1 agent: insufficient (need at least 2 agents active)
+    consensus_threshold = 1
 
     if active_agents_count < 2:
         raise ValueError(f"Insufficient agents for consensus: only {active_agents_count} active, need at least 2")

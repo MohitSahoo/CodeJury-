@@ -1,6 +1,5 @@
 # Custom config for testing
 exclude:
-  - 'test_*.js'
   - 'test_*.go'
   - 'vulnerable_app.py'
   - 'migrations/**'

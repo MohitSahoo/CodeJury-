@@ -22,6 +22,8 @@ class PythonParser(LanguageParser):
                                    'request.files', 'request.values', 'input(', 'sys.argv'],
             'file_operations': ['open(', 'file(', 'Path(', 'os.path.join'],
             'crypto_weak': ['md5', 'sha1', 'DES', 'RC4'],
+            'secret_patterns': ['API_KEY', 'SECRET', 'PASSWORD', 'PASS', 'TOKEN', 'AUTH',
+                               'CREDENTIAL', 'PRIVATE_KEY', 'ACCESS_KEY', 'SECRET_KEY'],
         }
 
     def parse_file(self, filepath: str, diff_content: str) -> Dict[str, Any]:
@@ -54,6 +56,7 @@ class PythonParser(LanguageParser):
             "dangerous_imports": self._extract_dangerous_imports(tree),
             "string_formatting": self._find_string_formatting(tree),
             "subprocess_calls": self._find_subprocess_calls_ast(tree, tainted_vars),
+            "hardcoded_secrets": self._find_hardcoded_secrets_ast(tree),
             "changed_lines": changed_lines,
             "tainted_variables": list(tainted_vars),
             "has_security_patterns": False
@@ -64,7 +67,8 @@ class PythonParser(LanguageParser):
             len(extraction["user_inputs"]) > 0 or
             len(extraction["file_operations"]) > 0 or
             len(extraction["dangerous_imports"]) > 0 or
-            len(extraction["subprocess_calls"]) > 0
+            len(extraction["subprocess_calls"]) > 0 or
+            len(extraction["hardcoded_secrets"]) > 0
         )
 
         return extraction
@@ -263,14 +267,24 @@ class PythonParser(LanguageParser):
                     func_name = ast.unparse(node.func)
 
                 if func_name == 'open' or 'Path' in func_name or 'os.path' in func_name:
+                    # Detect potential path traversal if argument is not a constant string
                     has_user_input = self._contains_user_input(node, tainted_vars)
-
+                    # Additional check: if the argument is a variable (Name) => possible path traversal
+                    arg_is_variable = False
+                    if node.args:
+                        first_arg = node.args[0]
+                        if isinstance(first_arg, ast.Name):
+                            arg_is_variable = True
+                    risk = "HIGH" if has_user_input or arg_is_variable else "LOW"
                     file_ops.append({
                         "operation": func_name,
                         "lineno": node.lineno,
                         "has_user_input": has_user_input,
-                        "risk": "HIGH" if has_user_input else "LOW"
+                        "risk": risk,
+                        "path_traversal": arg_is_variable
                     })
+
+
 
             elif isinstance(node, ast.With):
                 for item in node.items:
@@ -396,6 +410,32 @@ class PythonParser(LanguageParser):
                 if isinstance(keyword.value, ast.Constant) and keyword.value.value is True:
                     return True
         return False
+
+    def _find_hardcoded_secrets_ast(self, tree: ast.AST) -> List[Dict[str, Any]]:
+        """Find hardcoded secrets (API keys, passwords, tokens)."""
+        secrets = []
+
+        for node in ast.walk(tree):
+            # Check variable assignments
+            if isinstance(node, ast.Assign):
+                for target in node.targets:
+                    if isinstance(target, ast.Name):
+                        var_name = target.id.upper()
+                        # Check if variable name matches secret patterns
+                        if any(pattern in var_name for pattern in self.security_patterns['secret_patterns']):
+                            # Check if assigned a string literal
+                            if isinstance(node.value, ast.Constant) and isinstance(node.value.value, str):
+                                value = node.value.value
+                                # Don't flag empty strings or obvious placeholders
+                                if value and value not in ['', 'YOUR_KEY_HERE', 'CHANGE_ME', 'TODO', 'None', 'null']:
+                                    secrets.append({
+                                        "variable": target.id,
+                                        "lineno": node.lineno,
+                                        "value_length": len(value),
+                                        "risk": "HIGH"
+                                    })
+
+        return secrets
 
     def _classify_input_type(self, source: str) -> str:
         """Classify the type of user input."""

@@ -37,6 +37,8 @@ class SecurityCodeParser:
                                    'request.files', 'request.values', 'input(', 'sys.argv'],
             'file_operations': ['open(', 'file(', 'Path(', 'os.path.join'],
             'crypto_weak': ['md5', 'sha1', 'DES', 'RC4'],
+            'secret_patterns': ['API_KEY', 'SECRET', 'PASSWORD', 'PASS', 'TOKEN', 'AUTH',
+                               'CREDENTIAL', 'PRIVATE_KEY', 'ACCESS_KEY', 'SECRET_KEY'],
         }
 
     def parse_file(self, filepath: str, diff_content: str) -> Dict[str, Any]:
@@ -344,6 +346,32 @@ class SecurityCodeParser:
                 if isinstance(keyword.value, ast.Constant) and keyword.value.value is True:
                     return True
         return False
+
+    def _find_hardcoded_secrets(self, tree: ast.AST, content: str) -> List[Dict[str, Any]]:
+        """Find hardcoded secrets (API keys, passwords, tokens)."""
+        secrets = []
+
+        for node in ast.walk(tree):
+            # Check variable assignments
+            if isinstance(node, ast.Assign):
+                for target in node.targets:
+                    if isinstance(target, ast.Name):
+                        var_name = target.id.upper()
+                        # Check if variable name matches secret patterns
+                        if any(pattern in var_name for pattern in self.security_patterns['secret_patterns']):
+                            # Check if assigned a string literal
+                            if isinstance(node.value, ast.Constant) and isinstance(node.value.value, str):
+                                value = node.value.value
+                                # Don't flag empty strings or obvious placeholders
+                                if value and value not in ['', 'YOUR_KEY_HERE', 'CHANGE_ME', 'TODO']:
+                                    secrets.append({
+                                        "variable": target.id,
+                                        "lineno": node.lineno,
+                                        "value_length": len(value),
+                                        "risk": "HIGH"
+                                    })
+
+        return secrets
 
     def _classify_input_type(self, source: str) -> str:
         """Classify the type of user input."""
