@@ -2,11 +2,23 @@
 
 **Security scanner you won't disable after day 1.**
 
-Multi-agent AI consensus catches vulnerabilities single tools miss, with fewer false positives than traditional scanners. Free tier friendly, <30s per commit.
+Multi-agent AI consensus catches vulnerabilities single tools miss, with fewer false positives than traditional scanners. Production-ready with automatic retry logic and graceful degradation. Free tier friendly, <30s per commit.
 
 [![Python 3.8+](https://img.shields.io/badge/python-3.8+-blue.svg)](https://www.python.org/downloads/)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 [![Pre-commit](https://img.shields.io/badge/pre--commit-enabled-brightgreen?logo=pre-commit)](https://github.com/pre-commit/pre-commit)
+
+---
+
+## 🚀 Production-Ready Features
+
+- **API Resilience**: Automatic retry with exponential backoff (3 attempts per agent)
+- **Graceful Degradation**: Continues with 2/3 agents if one fails
+- **Zero Downtime**: Multi-model fallback for rate limits
+- **Comprehensive Logging**: Full error tracking and monitoring
+- **SaaS-Ready**: Built for reliability and scale
+
+See [RESILIENCE.md](RESILIENCE.md) for technical details and [SAAS_READINESS.md](SAAS_READINESS.md) for launch strategy.
 
 ---
 
