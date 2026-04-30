@@ -4,6 +4,7 @@ Runs all 5 stages of the security audit pipeline.
 """
 
 import os
+import sys
 from typing import Optional, Dict
 
 from rich.console import Console
