@@ -14,11 +14,8 @@ Multi-agent AI consensus catches vulnerabilities single tools miss, with fewer f
 
 - **API Resilience**: Automatic retry with exponential backoff (3 attempts per agent)
 - **Graceful Degradation**: Continues with 2/3 agents if one fails
-- **Zero Downtime**: Multi-model fallback for rate limits
-- **Comprehensive Logging**: Full error tracking and monitoring
-- **SaaS-Ready**: Built for reliability and scale
-
-See [RESILIENCE.md](RESILIENCE.md) for technical details and [SAAS_READINESS.md](SAAS_READINESS.md) for launch strategy.
+- **Multi-model Fallback**: Switches models on rate limits
+- **Comprehensive Logging**: Full error tracking
 
 ---
 

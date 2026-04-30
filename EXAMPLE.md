@@ -20,6 +20,7 @@ def login(username, password):
     return cursor.fetchone()
 ```
 
+
 **Detection Output:**
 ```
 ╭─────────────────────────────── Vulnerability ────────────────────────────────╮
