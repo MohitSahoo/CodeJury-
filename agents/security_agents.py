@@ -6,6 +6,7 @@ Three security agents analyze code from different perspectives.
 import os
 import json
 import time
+import logging
 from typing import Dict, List, Any
 from pathlib import Path
 
@@ -13,9 +14,20 @@ from google import genai
 from groq import Groq
 from dotenv import load_dotenv
 from concurrent.futures import ThreadPoolExecutor, as_completed
+from tenacity import (
+    retry,
+    stop_after_attempt,
+    wait_exponential,
+    retry_if_exception_type,
+    RetryError
+)
 
 # Load environment variables
 load_dotenv()
+
+# Setup logging
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
 
 
 class SecurityAgents:
@@ -41,69 +53,93 @@ class SecurityAgents:
             raise ValueError("GROQ_API_KEY not found in .env - at least one API key is required")
         self.groq = Groq(api_key=groq_key)
 
+    @retry(
+        stop=stop_after_attempt(3),
+        wait=wait_exponential(multiplier=1, min=2, max=10),
+        retry=retry_if_exception_type((Exception,)),
+        reraise=True
+    )
     def agent_a_static_analysis(self, extraction: Dict[str, Any]) -> Dict[str, Any]:
         """
-        Agent A: Static analysis perspective (Gemini).
-        Focuses on OWASP Top 10 patterns and CWE database.
+        Agent A: Static analysis perspective (Gemini with Fallback).
         """
         print("  Agent A (Static Analysis - Gemini)...")
 
-        prompt = f"""You are a static analysis security tool analyzing Python code.
+        prompt = f"""You are a static analysis security tool analyzing code.
+Analyze this code extraction for vulnerabilities (SQL Injection, XSS, Command Injection, etc.).
 
 Code extraction:
 {json.dumps(extraction, indent=2)}
 
-Analyze for these vulnerability types:
-- SQL Injection (CWE-89): Unsanitized user input in SQL queries, f-strings in queries
-- XSS (CWE-79): Unescaped user input in HTML/templates
-- Path Traversal (CWE-22): User input in file paths without validation
-- Command Injection (CWE-78): User input in subprocess calls, especially with shell=True
-- Insecure Deserialization (CWE-502): pickle.loads with untrusted data
-- Authentication Bypass: Missing auth checks, weak password validation
-
-For each vulnerability found, return JSON:
+Return ONLY valid JSON:
 {{
   "vulnerabilities": [
     {{
-      "type": "SQL_INJECTION|XSS|PATH_TRAVERSAL|COMMAND_INJECTION|etc",
+      "type": "VULN_TYPE",
       "location": "filename:lineno",
       "severity": "CRITICAL|HIGH|MEDIUM|LOW",
       "confidence": "HIGH|MEDIUM|LOW",
-      "description": "Brief description of the vulnerability",
-      "evidence": "Code snippet showing the issue",
+      "description": "...",
+      "evidence": "...",
       "cwe_id": "CWE-XX"
     }}
   ]
 }}
+"""
+        # Model fallback chain for resilience
+        models_to_try = [
+            'gemini-2.0-flash',
+            'gemini-1.5-flash',
+            'gemini-1.5-flash-8b'
+        ]
 
-Return ONLY valid JSON, no markdown, no explanations."""
+        last_error = None
+        for model_name in models_to_try:
+            try:
+                if not self.gemini_client:
+                    break
 
-        try:
-            response = self.gemini_client.models.generate_content(
-                model='gemini-2.5-flash-lite',
-                contents=prompt
-            )
-            result_text = response.text.strip()
+                response = self.gemini_client.models.generate_content(
+                    model=model_name,
+                    contents=prompt
+                )
+                result_text = response.text.strip() if response.text else ""
 
-            # Clean markdown fences if present
-            if result_text.startswith('```'):
-                result_text = result_text.split('```')[1]
-                if result_text.startswith('json'):
-                    result_text = result_text[4:]
-                result_text = result_text.strip()
+                if not result_text:
+                    raise ValueError("Empty response from Gemini")
 
-            result = json.loads(result_text)
-            print(f"    ✓ Found {len(result.get('vulnerabilities', []))} vulnerabilities")
-            return result
+                # Clean markdown fences
+                if result_text.startswith('```'):
+                    result_text = result_text.split('```')[1]
+                    if result_text.startswith('json'):
+                        result_text = result_text[4:]
+                    result_text = result_text.strip()
 
-        except json.JSONDecodeError as e:
-            print(f"    ✗ JSON parse error: {e}")
-            print(f"    Response: {response.text[:200]}")
-            return {"vulnerabilities": [], "error": "JSON parse failed"}
-        except Exception as e:
-            print(f"    ✗ Error: {e}")
-            return {"vulnerabilities": [], "error": str(e)}
+                result = json.loads(result_text)
+                print(f"    ✓ Found {len(result.get('vulnerabilities', []))} vulnerabilities (using {model_name})")
+                return result
 
+            except Exception as e:
+                last_error = str(e)
+                if "429" in last_error or "RESOURCE_EXHAUSTED" in last_error:
+                    print(f"    ⚠ {model_name} rate limited, trying fallback...")
+                    time.sleep(1) # Small pause before retry
+                    continue
+                else:
+                    print(f"    ✗ {model_name} error: {e}")
+                    break
+
+        # All models failed - raise exception for retry logic
+        error_msg = f"All Gemini models failed: {last_error}"
+        logger.error(error_msg)
+        raise Exception(error_msg)
+
+    @retry(
+        stop=stop_after_attempt(3),
+        wait=wait_exponential(multiplier=1, min=2, max=10),
+        retry=retry_if_exception_type((Exception,)),
+        reraise=True
+    )
     def agent_b_adversarial(self, extraction: Dict[str, Any]) -> Dict[str, Any]:
         """
         Agent B: Adversarial attacker perspective (Groq).
@@ -150,7 +186,11 @@ Return ONLY valid JSON, no markdown."""
                 max_tokens=2000
             )
 
-            result_text = response.choices[0].message.content.strip()
+            result_text = response.choices[0].message.content
+            if not result_text:
+                raise ValueError("Empty response from Groq")
+
+            result_text = result_text.strip()
 
             # Clean markdown fences
             if result_text.startswith('```'):
@@ -164,13 +204,19 @@ Return ONLY valid JSON, no markdown."""
             return result
 
         except json.JSONDecodeError as e:
-            print(f"    ✗ JSON parse error: {e}")
-            print(f"    Response: {result_text[:200]}")
-            return {"vulnerabilities": [], "error": "JSON parse failed"}
+            error_msg = f"JSON parse error: {e}"
+            logger.error(error_msg)
+            raise Exception(error_msg)
         except Exception as e:
-            print(f"    ✗ Error: {e}")
-            return {"vulnerabilities": [], "error": str(e)}
+            logger.error(f"Agent B error: {e}")
+            raise
 
+    @retry(
+        stop=stop_after_attempt(3),
+        wait=wait_exponential(multiplier=1, min=2, max=10),
+        retry=retry_if_exception_type((Exception,)),
+        reraise=True
+    )
     def agent_c_groq(self, extraction: Dict[str, Any]) -> Dict[str, Any]:
         """
         Agent C: Defensive architect perspective (Groq with different model).
@@ -217,7 +263,11 @@ Return ONLY valid JSON, no markdown, no explanations."""
                 max_tokens=2000
             )
 
-            result_text = response.choices[0].message.content.strip()
+            result_text = response.choices[0].message.content
+            if not result_text:
+                raise ValueError("Empty response from Groq")
+
+            result_text = result_text.strip()
 
             # Clean markdown fences
             if result_text.startswith('```'):
@@ -231,14 +281,12 @@ Return ONLY valid JSON, no markdown, no explanations."""
             return result
 
         except json.JSONDecodeError as e:
-            print(f"    ✗ JSON parse error: {e}")
-            print(f"    Response: {result_text[:200] if 'result_text' in locals() else 'N/A'}")
-            print("    ⚠ Falling back to heuristics")
-            return self.agent_c_defensive(extraction)
+            error_msg = f"JSON parse error: {e}"
+            logger.error(error_msg)
+            raise Exception(error_msg)
         except Exception as e:
-            print(f"    ✗ Error: {e}")
-            print("    ⚠ Falling back to heuristics")
-            return self.agent_c_defensive(extraction)
+            logger.error(f"Agent C error: {e}")
+            raise
 
     def agent_c_manual(self, extraction: Dict[str, Any]) -> Dict[str, Any]:
         """
@@ -449,17 +497,17 @@ def run_stage2(extractions: List[Dict[str, Any]], config: Dict[str, Any] = None)
 
         print(f"\nAnalyzing: {filepath}")
 
-        # Parallel Execution of Agents
+        # Parallel Execution of Agents with Graceful Degradation
         with ThreadPoolExecutor(max_workers=3) as executor:
             future_to_agent = {}
-            
+
             # Agent A (Gemini)
             if agents.gemini_client:
                 future_to_agent[executor.submit(agents.agent_a_static_analysis, extraction)] = "Agent A"
-            
+
             # Agent B (Groq 8B)
             future_to_agent[executor.submit(agents.agent_b_adversarial, extraction)] = "Agent B"
-            
+
             # Agent C (Groq 70B or Manual)
             if use_claude_code:
                 # Manual mode can't be fully parallel with others since it needs input
@@ -468,30 +516,73 @@ def run_stage2(extractions: List[Dict[str, Any]], config: Dict[str, Any] = None)
             else:
                 future_to_agent[executor.submit(agents.agent_c_groq, extraction)] = "Agent C"
 
-            results = {"Agent A": {"vulnerabilities": []}, "Agent B": {"vulnerabilities": []}, "Agent C": {"vulnerabilities": []}}
-            
+            results = {}
+            failed_agents = []
+
             for future in as_completed(future_to_agent):
                 agent_name = future_to_agent[future]
                 try:
-                    results[agent_name] = future.result()
+                    result = future.result()
+                    results[agent_name] = result
+                    logger.info(f"{agent_name} completed successfully")
+                except RetryError as e:
+                    logger.error(f"{agent_name} failed after retries: {e}")
+                    print(f"    ✗ {agent_name} failed after 3 retries")
+                    failed_agents.append(agent_name)
                 except Exception as e:
+                    logger.error(f"{agent_name} failed: {e}")
                     print(f"    ✗ {agent_name} failed: {e}")
-                    results[agent_name] = {"vulnerabilities": [], "error": str(e)}
+                    failed_agents.append(agent_name)
 
             # Handle Manual Agent C if needed
             if use_claude_code:
-                results["Agent C"] = agents.agent_c_manual(extraction)
+                try:
+                    results["Agent C"] = agents.agent_c_manual(extraction)
+                except Exception as e:
+                    logger.error(f"Agent C (manual) failed: {e}")
+                    print(f"    ✗ Agent C (manual) failed: {e}")
+                    failed_agents.append("Agent C")
+
+        # Graceful Degradation: Need at least 2 agents for consensus
+        successful_agents = len(results)
+        if successful_agents < 2:
+            logger.error(f"Insufficient agents: only {successful_agents} succeeded, need at least 2")
+            print(f"\n  ⚠ WARNING: Only {successful_agents} agent(s) succeeded")
+            print(f"  ⚠ Failed agents: {', '.join(failed_agents)}")
+            print(f"  ⚠ Need at least 2 agents for consensus - skipping this file")
+            continue
+
+        if failed_agents:
+            print(f"  ⚠ Running with {successful_agents}/3 agents (degraded mode)")
+            print(f"  ⚠ Failed: {', '.join(failed_agents)}")
 
         # Import consensus scorer
         from tools.security_consensus import score_security_consensus
 
-        # Score consensus
-        consensus = score_security_consensus(
-            results["Agent A"],
-            results["Agent B"],
-            results["Agent C"],
-            extraction['filepath']
-        )
+        # Prepare results dict with empty defaults for missing agents
+        results_dict = {
+            "Agent A": {"vulnerabilities": []},
+            "Agent B": {"vulnerabilities": []},
+            "Agent C": {"vulnerabilities": []}
+        }
+
+        # Update with actual results
+        for agent_name, result in results.items():
+            results_dict[agent_name] = result
+
+        # Score consensus (will handle missing agents)
+        try:
+            consensus = score_security_consensus(
+                results_dict["Agent A"],
+                results_dict["Agent B"],
+                results_dict["Agent C"],
+                extraction['filepath']
+            )
+        except ValueError as e:
+            # Insufficient agents for consensus
+            logger.error(f"Consensus failed: {e}")
+            print(f"\n  ✗ {e}")
+            continue
 
         all_results.append(consensus)
 

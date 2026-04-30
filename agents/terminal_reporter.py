@@ -70,6 +70,16 @@ def run_stage5(verified_results: List[Dict[str, Any]], config: Optional[Dict] = 
         print(json.dumps(output, indent=2))
         return _determine_exit_code(critical, high, medium, low, config)
 
+    # SARIF output mode
+    if config.get('sarif_output'):
+        from tools.sarif_generator import save_sarif
+        output_file = config.get('sarif_file', 'security-results.sarif')
+        save_sarif(verified_results, output_file)
+        if not config.get('summary_only'):
+            console.print(f"\n[green]✓ SARIF report saved to {output_file}[/green]")
+        if config.get('sarif_only', False):
+            return _determine_exit_code(critical, high, medium, low, config)
+
     # Rich terminal output mode
     print("\nStage 5: Terminal Report")
     print("=" * 50)

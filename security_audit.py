@@ -50,6 +50,11 @@ Examples:
         action='store_true',
         help='Show summary only (fast feedback)'
     )
+    output_group.add_argument(
+        '--sarif',
+        action='store_true',
+        help='Output results in SARIF format (standard for industry security tools)'
+    )
 
     # Exit code modes
     exit_group = parser.add_argument_group('Exit Code Options')
@@ -122,6 +127,7 @@ def main():
         config = {
             'json_output': args.json,
             'summary_only': args.summary,
+            'sarif_output': args.sarif,
             'fail_on_critical': args.fail_on_critical or (not args.fail_on_high and not args.strict and not args.warn_only),
             'fail_on_high': args.fail_on_high,
             'strict_mode': args.strict,

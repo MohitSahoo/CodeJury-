@@ -1,0 +1,49 @@
+{
+  "$schema": "https://schemastore.azurewebsites.net/schemas/json/sarif-2.1.0-rtm.5.json",
+  "version": "2.1.0",
+  "runs": [
+    {
+      "tool": {
+        "driver": {
+          "name": "Security Audit Pipeline",
+          "version": "1.2.0",
+          "informationUri": "https://github.com/MohitSahoo/CodeJury-",
+          "rules": [
+            {
+              "id": "XSS",
+              "shortDescription": {
+                "text": "XSS"
+              },
+              "helpUri": "https://cwe.mitre.org/data/definitions/79.html"
+            }
+          ]
+        }
+      },
+      "results": [
+        {
+          "ruleId": "XSS",
+          "message": {
+            "text": "The user-controlled input 'name' is directly embedded in an f-string that is likely to be rendered as HTML. Without proper escaping, this can lead to Cross-Site Scripting (XSS) vulnerabilities, allowing attackers to inject malicious scripts into the web page."
+          },
+          "locations": [
+            {
+              "physicalLocation": {
+                "artifactLocation": {
+                  "uri": "vulnerable_flask.py"
+                },
+                "region": {
+                  "startLine": 9
+                }
+              }
+            }
+          ],
+          "properties": {
+            "severity": "HIGH",
+            "confidence": "HIGH",
+            "cwe": "CWE-79"
+          }
+        }
+      ]
+    }
+  ]
+}
