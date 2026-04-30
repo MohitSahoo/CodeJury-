@@ -64,6 +64,70 @@ python3 security_audit.py
 
 ---
 
+## Security Features
+
+### Secrets Detection (NEW)
+
+The pipeline automatically scans for hardcoded secrets before analysis:
+
+```python
+# ❌ BAD - Will be detected
+api_key = "sk_live_51H8xYzABC123456789"
+aws_key = "AKIAIOSFODNN7EXAMPLE"
+
+# ✅ GOOD - Use environment variables
+api_key = os.getenv('API_KEY')
+aws_key = os.getenv('AWS_ACCESS_KEY')
+```
+
+**Detected patterns:**
+- Generic API keys
+- AWS access/secret keys
+- GitHub tokens (ghp_, gho_, etc.)
+- Stripe keys (sk_live_, pk_test_)
+- Private keys (RSA, DSA, EC)
+- JWT tokens
+- Passwords in URLs
+- Hardcoded passwords
+
+**Output example:**
+```
+⚠️  SECRETS DETECTED - DO NOT COMMIT
+================================================================================
+  STRIPE_KEY
+  Location: payment.py:12
+  Preview: sk_live_...789
+  Line: stripe_key = "sk_live_51H8xYzABC123456789"
+
+Recommendations:
+  1. Remove secrets from code
+  2. Use environment variables instead
+  3. Add .env to .gitignore
+  4. Rotate any exposed credentials
+```
+
+The scan is **non-blocking** - it warns but continues the security audit.
+
+### API Resilience (NEW)
+
+Production-ready error handling:
+
+- **Automatic retry**: 3 attempts with exponential backoff (2s → 4s → 8s)
+- **Graceful degradation**: Continues with 2/3 agents if one fails
+- **Multi-model fallback**: Tries multiple Gemini models on rate limits
+- **Comprehensive logging**: All failures tracked for debugging
+
+**Example output:**
+```
+Agent A (Static Analysis - Gemini)...
+  ⚠ gemini-2.0-flash rate limited, trying fallback...
+  ✗ Agent A failed after 3 retries
+⚠ Running with 2/3 agents (degraded mode)
+⚠ Failed: Agent A
+```
+
+See [RESILIENCE.md](RESILIENCE.md) for technical details.
+
 ## Basic Usage
 
 ### Pre-Commit Hook (Recommended)
