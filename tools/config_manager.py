@@ -39,7 +39,6 @@ class ConfigManager:
         """Return default configuration."""
         return {
             'exclude': [
-                'test_*.py',
                 '*_test.py',
                 'tests/**',
                 'migrations/**',
