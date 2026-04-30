@@ -12,6 +12,7 @@ from pathlib import Path
 from google import genai
 from groq import Groq
 from dotenv import load_dotenv
+from concurrent.futures import ThreadPoolExecutor, as_completed
 
 # Load environment variables
 load_dotenv()
@@ -34,7 +35,7 @@ class SecurityAgents:
             print("Warning: GEMINI_API_KEY not found - Agent A will be skipped")
             self.gemini_client = None
 
-        # Groq setup (required - at least one agent must work)
+        # Groq setup (required - used for both Agent B and Agent C)
         groq_key = os.getenv('GROQ_API_KEY')
         if not groq_key:
             raise ValueError("GROQ_API_KEY not found in .env - at least one API key is required")
@@ -170,6 +171,151 @@ Return ONLY valid JSON, no markdown."""
             print(f"    ✗ Error: {e}")
             return {"vulnerabilities": [], "error": str(e)}
 
+    def agent_c_groq(self, extraction: Dict[str, Any]) -> Dict[str, Any]:
+        """
+        Agent C: Defensive architect perspective (Groq with different model).
+        Focuses on blast radius, impact assessment, and defense-in-depth.
+        Uses a different Groq model than Agent B for diverse perspective.
+        """
+        print("  Agent C (Defensive Architect - Groq Llama)...")
+
+        prompt = f"""You are a defensive security architect analyzing Python code.
+Focus on blast radius, impact assessment, and missing security controls.
+
+Code extraction:
+{json.dumps(extraction, indent=2)}
+
+Analyze from a defensive perspective:
+- What is the worst-case impact if this code is exploited?
+- What security controls are missing?
+- What is the blast radius of each vulnerability?
+- Are there defense-in-depth failures?
+
+For each vulnerability found, return JSON:
+{{
+  "vulnerabilities": [
+    {{
+      "type": "SQL_INJECTION|XSS|PATH_TRAVERSAL|COMMAND_INJECTION|etc",
+      "location": "filename:lineno",
+      "severity": "CRITICAL|HIGH|MEDIUM|LOW",
+      "confidence": "HIGH|MEDIUM|LOW",
+      "description": "Brief description focusing on impact and blast radius",
+      "evidence": "Code snippet",
+      "cwe_id": "CWE-XX"
+    }}
+  ]
+}}
+
+Return ONLY valid JSON, no markdown, no explanations."""
+
+        try:
+            # Use different model than Agent B for diverse perspective
+            response = self.groq.chat.completions.create(
+                model="llama-3.3-70b-versatile",  # Different from Agent B's llama-3.1-8b
+                messages=[{"role": "user", "content": prompt}],
+                temperature=0.7,  # Slightly higher for more creative defensive thinking
+                max_tokens=2000
+            )
+
+            result_text = response.choices[0].message.content.strip()
+
+            # Clean markdown fences
+            if result_text.startswith('```'):
+                result_text = result_text.split('```')[1]
+                if result_text.startswith('json'):
+                    result_text = result_text[4:]
+                result_text = result_text.strip()
+
+            result = json.loads(result_text)
+            print(f"    ✓ Found {len(result.get('vulnerabilities', []))} vulnerabilities")
+            return result
+
+        except json.JSONDecodeError as e:
+            print(f"    ✗ JSON parse error: {e}")
+            print(f"    Response: {result_text[:200] if 'result_text' in locals() else 'N/A'}")
+            print("    ⚠ Falling back to heuristics")
+            return self.agent_c_defensive(extraction)
+        except Exception as e:
+            print(f"    ✗ Error: {e}")
+            print("    ⚠ Falling back to heuristics")
+            return self.agent_c_defensive(extraction)
+
+    def agent_c_manual(self, extraction: Dict[str, Any]) -> Dict[str, Any]:
+        """
+        Agent C: Generate a prompt for the user to paste into Claude Code.
+        """
+        print("\n" + "="*80)
+        print("🤖 CLAUDE CODE MODE: Agent C (Defensive Architect)")
+        print("="*80)
+        print(f"\nPlease copy the prompt below and paste it into your Claude Code terminal.")
+        print(f"When Claude responds with JSON, paste the JSON back here and press ENTER.\n")
+        
+        prompt = f"""You are a Defensive Security Architect. Analyze this code extraction for vulnerabilities.
+Focus on defense-in-depth, blast radius, and missing security controls.
+
+Code extraction:
+{json.dumps(extraction, indent=2)}
+
+For each vulnerability found, return ONLY a JSON object:
+{{
+  "vulnerabilities": [
+    {{
+      "type": "SQL_INJECTION|XSS|PATH_TRAVERSAL|COMMAND_INJECTION|etc",
+      "location": "filename:lineno",
+      "severity": "CRITICAL|HIGH|MEDIUM|LOW",
+      "confidence": "HIGH|MEDIUM|LOW",
+      "description": "Brief description",
+      "evidence": "Code snippet",
+      "cwe_id": "CWE-XX"
+    }}
+  ]
+}}
+"""
+        print("-" * 40 + " COPY FROM HERE " + "-" * 40)
+        print(prompt)
+        print("-" * 40 + " END OF PROMPT " + "-" * 40)
+        
+        print("\nWaiting for Claude's JSON response (paste below and press ENTER):")
+        
+        # Read lines until we have a valid JSON block
+        lines = []
+        while True:
+            try:
+                line = input()
+                if not line and lines: # Stop on empty line if we have content
+                    break
+                lines.append(line)
+                # Check if it's already valid JSON
+                content = "\n".join(lines).strip()
+                if content.startswith('{') and content.endswith('}'):
+                    try:
+                        json.loads(content)
+                        break
+                    except:
+                        pass
+            except EOFError:
+                break
+        
+        content = "\n".join(lines).strip()
+        # Clean markdown fences if present
+        if "```" in content:
+            parts = content.split("```")
+            for part in parts:
+                part = part.strip()
+                if part.startswith("json"):
+                    part = part[4:].strip()
+                if part.startswith("{") and part.endswith("}"):
+                    content = part
+                    break
+        
+        try:
+            result = json.loads(content)
+            print(f"    ✓ Received {len(result.get('vulnerabilities', []))} vulnerabilities from Claude Code")
+            return result
+        except Exception as e:
+            print(f"    ✗ Error parsing Claude Code response: {e}")
+            return {"vulnerabilities": []}
+
     def agent_c_defensive(self, extraction: Dict[str, Any]) -> Dict[str, Any]:
         """
         Agent C: Defensive architect perspective (Claude prompt template).
@@ -265,7 +411,7 @@ Return ONLY valid JSON, no markdown."""
                     "confidence": "MEDIUM",
                     "description": "String formatting with user input may produce unescaped HTML output",
                     "evidence": fmt['type'],
-                    "cwe_id": "CWE-79"
+                "cwe_id": "CWE-79"
                 })
 
         print(f"    ✓ Found {len(vulnerabilities)} vulnerabilities")
@@ -273,16 +419,13 @@ Return ONLY valid JSON, no markdown."""
         return {"vulnerabilities": vulnerabilities}
 
 
-def run_stage2(extractions: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+def run_stage2(extractions: List[Dict[str, Any]], config: Dict[str, Any] = None) -> List[Dict[str, Any]]:
     """
-    Stage 2: Multi-agent security analysis.
-
-    Args:
-        extractions: List of Stage 1 extraction results
-
-    Returns:
-        List of consensus results
+    Stage 2: Multi-agent security analysis (Parallel Edition).
     """
+    if config is None:
+        config = {}
+
     # Check cache first
     cache_file = Path('cache/stage2_consensus.json')
     if cache_file.exists():
@@ -290,44 +433,63 @@ def run_stage2(extractions: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
         with open(cache_file) as f:
             return json.load(f)
 
-    print("\nStage 2: Multi-Agent Security Analysis")
+    print("\nStage 2: Multi-Agent Security Analysis (Parallel)")
     print("=" * 50)
 
     agents = SecurityAgents()
     all_results = []
+    
+    use_claude_code = config.get('claude_code', False)
 
     for extraction in extractions:
-        # Skip files without security patterns
-        if not extraction.get('has_security_patterns'):
-            print(f"\nSkipping {extraction['filepath']} (no security patterns)")
+        filepath = extraction['filepath']
+        if not extraction.get('has_security_patterns', True):
+            print(f"\nSkipping {filepath} (no security patterns)")
             continue
 
-        print(f"\nAnalyzing: {extraction['filepath']}")
+        print(f"\nAnalyzing: {filepath}")
 
-        # Run Agent A (Gemini) - skip if API unavailable
-        agent_a_result = {"vulnerabilities": []}
-        try:
-            agent_a_result = agents.agent_a_static_analysis(extraction)
-            time.sleep(4)  # Gemini rate limit: 15 RPM
-        except Exception as e:
-            print(f"    ⚠ Gemini unavailable, using 2-agent consensus")
-            agent_a_result = {"vulnerabilities": [], "error": "gemini_unavailable"}
+        # Parallel Execution of Agents
+        with ThreadPoolExecutor(max_workers=3) as executor:
+            future_to_agent = {}
+            
+            # Agent A (Gemini)
+            if agents.gemini_client:
+                future_to_agent[executor.submit(agents.agent_a_static_analysis, extraction)] = "Agent A"
+            
+            # Agent B (Groq 8B)
+            future_to_agent[executor.submit(agents.agent_b_adversarial, extraction)] = "Agent B"
+            
+            # Agent C (Groq 70B or Manual)
+            if use_claude_code:
+                # Manual mode can't be fully parallel with others since it needs input
+                # but we'll run A and B first, then C
+                pass
+            else:
+                future_to_agent[executor.submit(agents.agent_c_groq, extraction)] = "Agent C"
 
-        # Run Agent B (Groq)
-        agent_b_result = agents.agent_b_adversarial(extraction)
-        # No sleep needed for Groq (fast)
+            results = {"Agent A": {"vulnerabilities": []}, "Agent B": {"vulnerabilities": []}, "Agent C": {"vulnerabilities": []}}
+            
+            for future in as_completed(future_to_agent):
+                agent_name = future_to_agent[future]
+                try:
+                    results[agent_name] = future.result()
+                except Exception as e:
+                    print(f"    ✗ {agent_name} failed: {e}")
+                    results[agent_name] = {"vulnerabilities": [], "error": str(e)}
 
-        # Run Agent C (Claude)
-        agent_c_result = agents.agent_c_defensive(extraction)
+            # Handle Manual Agent C if needed
+            if use_claude_code:
+                results["Agent C"] = agents.agent_c_manual(extraction)
 
         # Import consensus scorer
         from tools.security_consensus import score_security_consensus
 
         # Score consensus
         consensus = score_security_consensus(
-            agent_a_result,
-            agent_b_result,
-            agent_c_result,
+            results["Agent A"],
+            results["Agent B"],
+            results["Agent C"],
             extraction['filepath']
         )
 
@@ -342,19 +504,7 @@ def run_stage2(extractions: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
     with open(cache_file, 'w') as f:
         json.dump(all_results, f, indent=2)
 
-    # Save summary debug info
-    cache_dir = Path('cache')
-    if all_results:
-        # In a multi-file scenario, this just saves the LAST file's agent results for quick debugging
-        with open(cache_dir / 'stage2_agent_a.json', 'w') as f:
-            json.dump(agent_a_result, f, indent=2)
-        with open(cache_dir / 'stage2_agent_b.json', 'w') as f:
-            json.dump(agent_b_result, f, indent=2)
-        with open(cache_dir / 'stage2_agent_c.json', 'w') as f:
-            json.dump(agent_c_result, f, indent=2)
-
     print(f"\n✓ Stage 2 complete - cached to {cache_file}")
-
     return all_results
 
 

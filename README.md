@@ -15,11 +15,13 @@ Multi-agent AI consensus catches vulnerabilities single tools miss, with fewer f
 **The Problem:** Traditional security scanners have high false positive rates (developers disable them) OR miss critical vulnerabilities (single-perspective analysis).
 
 **The Solution:** 3 AI agents debate every commit from different perspectives:
-- **Agent A (Static Analysis):** OWASP Top 10 patterns
-- **Agent B (Adversarial Attacker):** "How would I exploit this?"
-- **Agent C (Defensive Architect):** Blast radius assessment
+- **Agent A (Static Analysis - Gemini 2.0 Flash):** OWASP Top 10 patterns
+- **Agent B (Adversarial Attacker - Groq Llama 3.1 8B):** "How would I exploit this?"
+- **Agent C (Defensive Architect - Groq Llama 3.3 70B):** Blast radius assessment
 
 **2/3 consensus threshold** = fewer false positives. **Multi-perspective analysis** = better detection.
+
+All agents use **free-tier APIs** - zero cost for typical usage.
 
 ---
 
@@ -36,6 +38,7 @@ cp .env.example .env
 # Add your keys:
 # - GEMINI_API_KEY (from https://makersuite.google.com/app/apikey)
 # - GROQ_API_KEY (from https://console.groq.com/keys)
+#   Groq is used for both Agent B and Agent C with different models
 ```
 
 ### 3. Install Pre-Commit Hook
@@ -118,9 +121,12 @@ graph TD
 - *Designed for easy extension via `ParserFactory`*
 
 ### ✅ Multi-Agent Consensus
-- 3 security agents (Gemini, Groq/Llama3, Claude/Patterns)
+- 3 security agents with diverse models:
+  - Agent A: Google Gemini 2.0 Flash (static analysis)
+  - Agent B: Groq Llama 3.1 8B (adversarial attacker)
+  - Agent C: Groq Llama 3.3 70B (defensive architect)
 - 2/3 consensus threshold (reduces false positives)
-- Graceful degradation with automatic 2-agent fallback
+- All free-tier APIs with generous rate limits
 
 ### ✅ Intelligent Caching
 - **Content-Aware**: Uses git blob hashes to track changes
@@ -293,6 +299,7 @@ python security_audit.py \
 | Feature | This Tool | Bandit | Semgrep | Snyk |
 |---------|-----------|--------|---------|------|
 | **Multi-agent consensus** | ✅ 3 agents | ❌ Single | ❌ Single | ❌ Single |
+| **Model diversity** | ✅ 3 models | ❌ | ❌ | ❌ |
 | **False positive rate** | Low (2/3 threshold) | High | Medium | Low |
 | **Attack tree visualization** | ✅ | ❌ | ❌ | ✅ (paid) |
 | **Ignore file support** | ✅ | ✅ | ✅ | ✅ |
@@ -306,7 +313,7 @@ python security_audit.py \
 | **Languages** | Python (MVP) | Python | 30+ | 30+ |
 | **Setup time** | 5 minutes | 2 minutes | 5 minutes | 10 minutes |
 
-**Why multi-agent?** Single-tool scanners optimize for one perspective. Multi-agent consensus catches what single tools miss while filtering out noise.
+**Why multi-agent?** Single-tool scanners optimize for one perspective. Multi-agent consensus with diverse models (Gemini + two Llama variants) catches what single tools miss while filtering out noise.
 
 ---
 
@@ -319,9 +326,9 @@ Git Diff (changed Python files)
   Python AST → extract functions, SQL queries, user inputs
      ↓
 [Stage 2: Multi-Agent Analysis]
-  Agent A: Static analysis (Gemini) - OWASP patterns
-  Agent B: Adversarial attacker (Groq) - exploitation perspective
-  Agent C: Defensive architect (Claude) - blast radius
+  Agent A: Static analysis (Gemini 2.0 Flash) - OWASP patterns
+  Agent B: Adversarial attacker (Groq Llama 3.1 8B) - exploitation perspective
+  Agent C: Defensive architect (Groq Llama 3.3 70B) - blast radius
   → Consensus scoring (2/3 threshold)
      ↓
 [Stage 3: Severity Debate] (ONLY if vulns found)
@@ -459,9 +466,9 @@ security-audit-pipeline/
 
 ## Known Limitations
 
-1. **Agent C uses heuristics** - Pattern-based detection for the defensive perspective in the current version.
-2. **Local Scope** - No cross-file attack chains yet (requires full codebase context).
-3. **API Limits** - Free tier APIs may occasionally hit rate limits; the pipeline handles this via 2-agent fallback.
+1. **Model Diversity** - Two agents use Groq (different models: 8B vs 70B provide different reasoning depths)
+2. **Local Scope** - No cross-file attack chains yet (requires full codebase context)
+3. **API Limits** - Free tier APIs have generous limits (Gemini: 15 RPM, Groq: 14,400 req/day per model)
 
 ---
 
@@ -479,7 +486,7 @@ Contributions welcome! Areas where help is needed:
 ## FAQ
 
 **Q: How accurate is it?**
-A: 2/3 consensus threshold reduces false positives vs single-tool scanners. Tested on multiple Python projects with good detection rates.
+A: 2/3 consensus threshold with 3 different AI models (Gemini 2.0, Llama 3.1 8B, Llama 3.3 70B) reduces false positives vs single-tool scanners. Different model sizes provide diverse reasoning depths.
 
 **Q: Does it slow down commits?**
 A: <30s per commit. Acceptable for most workflows. Skips clean code automatically. Use `--quick` for ~50% faster results.
@@ -503,7 +510,7 @@ A: Create `.secaudit.yaml` with exclude patterns. Test files, migrations, and co
 A: MVP is Python only. Architecture designed for easy extension to JS/TS, Go, etc. Contributions welcome.
 
 **Q: How much does it cost?**
-A: Free tier APIs (Gemini + Groq). ~0.6K tokens per commit = ~$0.0001 per commit. 1000+ commits/day on free tier.
+A: Free tier APIs only. Gemini 2.0 Flash (15 RPM) + Groq Llama models (14,400 req/day each). ~0.6K tokens per commit. 1000+ commits/day on free tier.
 
 ---
 

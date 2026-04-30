@@ -433,9 +433,9 @@ cat cache/stage2_consensus.json | jq '.consensus_findings[] | select(.confidence
 ```
 
 **Structure:**
-- `agent_a_findings[]`: Static analysis (Gemini) - OWASP patterns
-- `agent_b_findings[]`: Adversarial attacker (Groq) - exploitation perspective
-- `agent_c_findings[]`: Defensive architect (Claude) - blast radius
+- `agent_a_findings[]`: Static analysis (Gemini 2.0 Flash) - OWASP patterns
+- `agent_b_findings[]`: Adversarial attacker (Groq Llama 3.1 8B) - exploitation perspective
+- `agent_c_findings[]`: Defensive architect (Groq Llama 3.3 70B) - blast radius
 - `consensus_findings[]`: 2/3 agreement threshold
   - `type`: SQL_INJECTION, XSS, COMMAND_INJECTION, etc.
   - `location`: File path and line number
@@ -612,10 +612,17 @@ git add *.py
 
 ### API Rate Limits
 
-Using free tier APIs. If you hit rate limits:
+Free tier APIs have generous limits:
+- **Gemini 2.0 Flash**: 15 requests per minute (sufficient for most workflows)
+- **Groq Llama 3.1 8B**: 14,400 requests per day
+- **Groq Llama 3.3 70B**: 14,400 requests per day
+
+Typical usage (10-50 commits/day) stays well within limits.
+
+If you hit rate limits:
 - Use `--quick` mode for faster scans
-- Reduce commit frequency
-- Upgrade to paid API tiers
+- Space out commits
+- Consider caching strategies
 
 ### False Positives
 
