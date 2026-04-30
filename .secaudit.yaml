@@ -2,7 +2,6 @@
 exclude:
   - 'test_*.py'
   - 'test_*.js'
-  - 'test_*.java'
   - 'test_*.go'
   - 'vulnerable_app.py'
   - 'migrations/**'

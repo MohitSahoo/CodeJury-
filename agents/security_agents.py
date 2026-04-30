@@ -86,11 +86,11 @@ Return ONLY valid JSON:
   ]
 }}
 """
-        # Model fallback chain for resilience
+        # Model fallback chain for resilience (Verified names)
         models_to_try = [
             'gemini-2.0-flash',
-            'gemini-1.5-flash',
-            'gemini-1.5-flash-8b'
+            'gemini-2.5-flash',
+            'gemini-flash-latest'
         ]
 
         last_error = None
@@ -121,12 +121,14 @@ Return ONLY valid JSON:
 
             except Exception as e:
                 last_error = str(e)
-                if "429" in last_error or "RESOURCE_EXHAUSTED" in last_error:
-                    print(f"    ⚠ {model_name} rate limited, trying fallback...")
-                    time.sleep(1) # Small pause before retry
+                # Retry/Fallback on 429 (Rate Limit) or 503 (Service Unavailable)
+                if any(err in last_error for err in ["429", "RESOURCE_EXHAUSTED", "503", "UNAVAILABLE"]):
+                    print(f"    ⚠ {model_name} busy/limited, trying fallback...")
+                    time.sleep(1) # Small pause
                     continue
                 else:
                     print(f"    ✗ {model_name} error: {e}")
+                    # If it's a fatal error (like 400 Bad Request), we stop
                     break
 
         # All models failed - raise exception for retry logic
@@ -486,8 +488,6 @@ def run_stage2(extractions: List[Dict[str, Any]], config: Dict[str, Any] = None)
 
     agents = SecurityAgents()
     all_results = []
-    
-    use_claude_code = config.get('claude_code', False)
 
     for extraction in extractions:
         filepath = extraction['filepath']
@@ -508,13 +508,8 @@ def run_stage2(extractions: List[Dict[str, Any]], config: Dict[str, Any] = None)
             # Agent B (Groq 8B)
             future_to_agent[executor.submit(agents.agent_b_adversarial, extraction)] = "Agent B"
 
-            # Agent C (Groq 70B or Manual)
-            if use_claude_code:
-                # Manual mode can't be fully parallel with others since it needs input
-                # but we'll run A and B first, then C
-                pass
-            else:
-                future_to_agent[executor.submit(agents.agent_c_groq, extraction)] = "Agent C"
+            # Agent C (Groq 70B)
+            future_to_agent[executor.submit(agents.agent_c_groq, extraction)] = "Agent C"
 
             results = {}
             failed_agents = []
@@ -533,15 +528,6 @@ def run_stage2(extractions: List[Dict[str, Any]], config: Dict[str, Any] = None)
                     logger.error(f"{agent_name} failed: {e}")
                     print(f"    ✗ {agent_name} failed: {e}")
                     failed_agents.append(agent_name)
-
-            # Handle Manual Agent C if needed
-            if use_claude_code:
-                try:
-                    results["Agent C"] = agents.agent_c_manual(extraction)
-                except Exception as e:
-                    logger.error(f"Agent C (manual) failed: {e}")
-                    print(f"    ✗ Agent C (manual) failed: {e}")
-                    failed_agents.append("Agent C")
 
         # Graceful Degradation: Need at least 2 agents for consensus
         successful_agents = len(results)
@@ -589,6 +575,14 @@ def run_stage2(extractions: List[Dict[str, Any]], config: Dict[str, Any] = None)
         print(f"\n  Consensus: {consensus['total_vulns']} vulnerabilities")
         print(f"    High confidence: {consensus['high_confidence']}")
         print(f"    Medium confidence: {consensus['medium_confidence']}")
+
+        # Save summary debug info
+        cache_dir = Path('cache')
+        if results:
+            for agent_name, result in results.items():
+                safe_name = agent_name.lower().replace(' ', '_')
+                with open(cache_dir / f'stage2_{safe_name}.json', 'w') as f:
+                    json.dump(result, f, indent=2)
 
     # Cache results
     cache_file.parent.mkdir(exist_ok=True)

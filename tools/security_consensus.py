@@ -9,11 +9,12 @@ from collections import defaultdict
 
 def _normalize_type(vuln_type: str) -> str:
     vuln_type = str(vuln_type).upper()
-    if any(t in vuln_type for t in ['SQL_INJECTION', 'SQLI']): return 'SQL_INJECTION'
+    if any(t in vuln_type for t in ['SQL_INJECTION', 'SQLI', 'IMPROPER_NEUTRALIZATION']): return 'SQL_INJECTION'
     if any(t in vuln_type for t in ['COMMAND_INJECTION', 'CMD_INJECTION', 'OS_COMMAND']): return 'COMMAND_INJECTION'
-    if any(t in vuln_type for t in ['XSS', 'CROSS_SITE_SCRIPTING']): return 'XSS'
-    if any(t in vuln_type for t in ['DESERIALIZATION', 'PICKLE']): return 'INSECURE_DESERIALIZATION'
+    if any(t in vuln_type for t in ['XSS', 'CROSS_SITE_SCRIPTING', 'WEB_PAGE_GENERATION']): return 'XSS'
+    if any(t in vuln_type for t in ['DESERIALIZATION', 'PICKLE', 'INSECURE_DESERIALIZATION']): return 'INSECURE_DESERIALIZATION'
     if any(t in vuln_type for t in ['PATH_TRAVERSAL', 'LFI', 'DIRECTORY_TRAVERSAL']): return 'PATH_TRAVERSAL'
+    if any(t in vuln_type for t in ['SECRET', 'HARDCODED', 'API_KEY', 'CREDENTIAL']): return 'HARDCODED_SECRET'
     return vuln_type
 
 def _parse_location(location: str):

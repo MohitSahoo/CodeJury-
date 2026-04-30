@@ -23,7 +23,7 @@ def get_staged_files(extensions: List[str] = None) -> List[str]:
 
     try:
         result = subprocess.run(
-            ['git', 'diff', '--cached', '--name-only', '--diff-filter=ACM'],
+            ['git', 'diff', '--cached', '--name-only', '--diff-filter=ACMR'],
             capture_output=True,
             text=True,
             check=True
